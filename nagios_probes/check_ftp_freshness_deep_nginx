@@ -1,0 +1,64 @@
+#!/usr/bin/ruby
+=begin
+
+check ftp.ccc.de freshness on nginx by checking INDEX.gz content
+
+=end
+
+require 'open-uri'
+require 'zlib'
+
+FQDN = 'ftp.ccc.de'
+FRESHNESS_FILE = 'INDEX.gz'
+
+# host -t A ftp.ccc.de
+MASTER_IP = '212.201.68.160'
+
+class ServerInfo
+  def initialize(ip='127.0.0.1')
+    @ip = ip
+    retrieve_freshness_file
+  end
+  attr_reader :ip, :ftp_listing
+
+  def ==(comparee)
+    return true if comparee.equal?(self)
+    return true if comparee.ftp_listing == self.ftp_listing
+    return false
+  end
+
+  protected
+  def retrieve_freshness_file
+    begin
+    open( "http://#{@ip}/#{FRESHNESS_FILE}", 'Host' => FQDN ) { |f|
+      gzio = Zlib::GzipReader.new(f)
+      @ftp_listing = gzio.readlines
+    }
+    rescue
+      @ftp_listing = []
+      raise "failed to retrieve file"
+    end
+  end
+
+end
+
+begin
+  master = ServerInfo.new( MASTER_IP )
+  slave = ServerInfo.new( ARGV[0] )
+  message = "OK: #{slave.ip} is synchronized"
+  retval = 0 # ok
+
+  unless master == slave
+    #retval = 1 # warning
+    message = "CRITICAL: #{slave.ip} not in sync"
+    retval = 2 # critical
+  end
+
+rescue => ex
+  p ex
+  message = "UNKNOWN: an error occured while checking ftp freshness"
+  retval = 3 # unknown
+end
+
+puts message
+exit retval
