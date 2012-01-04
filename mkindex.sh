@@ -1,5 +1,5 @@
 #!/bin/bash
-#set -x
+# run as ftp user
 
 PATH=/usr/bin:/bin
 umask 022
