@@ -10,5 +10,5 @@ BASEDIR="/srv/ftp"
 USER="ftp"
 GROUP="uploaders"
 
-cd $BASEDIR && find . -type f -printf "%T@ %s %p\n" | sort -n | gzip -1 > INDEX.gz
+cd $BASEDIR && find . -type f -printf "%T@ %s %p\n" | grep -v "./INDEX.gz" | sort -n | gzip -1 > INDEX.gz
 chown "${USER}:${GROUP}" INDEX.gz
