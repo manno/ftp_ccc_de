@@ -7,12 +7,30 @@ check ftp.ccc.de freshness on nginx by checking INDEX.gz content
 
 require 'open-uri'
 require 'zlib'
+require "optparse"
 
-FQDN = 'ftp.ccc.de'
-FRESHNESS_FILE = 'INDEX.gz'
+OPTIONS = { 
+  :fqdn           => 'ftp.ccc.de',
+  :master_ip      => '212.201.68.160',
+  :freshness_file => 'INDEX.gz',
+  :verbose        => false,
+}
+ARGV.options do |opt|
+  opt.banner = "Usage: ruby #{$0} ip"
+  opt.on('-f', '--fqdn', 'check this vhost') { |v| OPTIONS[:fqdn] = v }
+  opt.on('-m', '--master', 'IP of the master http server') { |v| OPTIONS[:fqdn] = v }
+  opt.on('-i', '--file', 'check freshness by comparing this file') { |v| OPTIONS[:freshness_file] = v }
+  opt.on("-v", "--verbose", "enable verbose output") { |v| OPTIONS[:verbose] = v }
+  opt.on("-h", "--help", "Show this help message.") { puts opt; exit }
+  opt.parse!
+end 
 
-# host -t A ftp.ccc.de
-MASTER_IP = '212.201.68.160'
+if ARGV[0]
+    slave_ip = ARGV[0]
+else
+    hosts = `host -t A #{OPTIONS[:fqdn]}`.lines.collect {|l| l.split(' ')[3] }
+    slave_ip = hosts[ rand hosts.length ]
+end
 
 class ServerInfo
   def initialize(ip='127.0.0.1')
@@ -30,7 +48,7 @@ class ServerInfo
   protected
   def retrieve_freshness_file
     begin
-    open( "http://#{@ip}/#{FRESHNESS_FILE}", 'Host' => FQDN ) { |f|
+    open( "http://#{@ip}/#{OPTIONS[:freshness_file]}", 'Host' => OPTIONS[:fqdn] ) { |f|
       gzio = Zlib::GzipReader.new(f)
       @ftp_listing = gzio.readlines
     }
@@ -43,8 +61,8 @@ class ServerInfo
 end
 
 begin
-  master = ServerInfo.new( MASTER_IP )
-  slave = ServerInfo.new( ARGV[0] )
+  master = ServerInfo.new( OPTIONS[:master_ip] )
+  slave = ServerInfo.new( slave_ip )
   message = "OK: #{slave.ip} is synchronized"
   retval = 0 # ok
 
@@ -52,6 +70,7 @@ begin
     #retval = 1 # warning
     message = "CRITICAL: #{slave.ip} not in sync"
     retval = 2 # critical
+    p master.ftp_listing - slave.ftp_listing if OPTIONS[:verbose]
   end
 
 rescue => ex
