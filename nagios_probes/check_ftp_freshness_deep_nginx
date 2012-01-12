@@ -78,10 +78,10 @@ def check_freshness(slave_ip)
       if OPTIONS[:verbose]
           difference = master.ftp_listing - slave.ftp_listing 
           STDERR.puts "#{difference.length} entries don't match:" 
-          STDERR.puts "    #{difference[0]}"
-          STDERR.puts "    #{difference[-1]}"
+          STDERR.puts "#{difference[0][0..79]}"
+          STDERR.puts "#{difference[-1][0..79]}"
           STDERR.puts "MASTER: " + master.ftp_listing.select { |l| l.match(/INDEX$/) }.inspect
-          STDERR.puts "SLAVE: " + slave.ftp_listing.select { |l| l.match(/INDEX$/) }.inspect
+          STDERR.puts " SLAVE: " + slave.ftp_listing.select { |l| l.match(/INDEX$/) }.inspect
       end
     end
 
