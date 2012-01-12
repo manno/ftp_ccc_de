@@ -28,8 +28,8 @@ end
 if ARGV[0]
     slave_ip = ARGV[0]
 else
+    # DEBUG, not for nagios
     hosts = `host -t A #{OPTIONS[:fqdn]}`.lines.collect {|l| l.split(' ')[3] }
-    slave_ip = hosts[ rand hosts.length ]
 end
 
 class ServerInfo
@@ -48,8 +48,12 @@ class ServerInfo
   protected
   def retrieve_freshness_file
     begin
+    #open( "ftp://#{@ip}/#{OPTIONS[:freshness_file]}" ) { |f|
     open( "http://#{@ip}/#{OPTIONS[:freshness_file]}", 'Host' => OPTIONS[:fqdn] ) { |f|
-      gzio = Zlib::GzipReader.new(f)
+      gzio = Zlib::GzipReader.new(f, :external_encoding => 'utf-8', 
+                                  :internal_encoding => 'iso-8859-15', 
+                                  :invalid => :replace
+                                 )
       @ftp_listing = gzio.readlines
     }
     rescue
@@ -60,24 +64,50 @@ class ServerInfo
 
 end
 
-begin
-  master = ServerInfo.new( OPTIONS[:master_ip] )
-  slave = ServerInfo.new( slave_ip )
-  message = "OK: #{slave.ip} is synchronized"
-  retval = 0 # ok
+def check_freshness(slave_ip)
+  begin
+    master = ServerInfo.new( OPTIONS[:master_ip] )
+    slave = ServerInfo.new( slave_ip )
+    message = "OK: #{slave.ip} is synchronized"
+    retval = 0 # ok
 
-  unless master == slave
-    #retval = 1 # warning
-    message = "CRITICAL: #{slave.ip} not in sync"
-    retval = 2 # critical
-    p master.ftp_listing - slave.ftp_listing if OPTIONS[:verbose]
+    unless master == slave
+      #retval = 1 # warning
+      message = "CRITICAL: #{slave.ip} not in sync"
+      retval = 2 # critical
+      if OPTIONS[:verbose]
+          difference = master.ftp_listing - slave.ftp_listing 
+          STDERR.puts "#{difference.length} entries don't match:" 
+          STDERR.puts "    #{difference[0]}"
+          STDERR.puts "    #{difference[-1]}"
+          STDERR.puts "MASTER: " + master.ftp_listing.select { |l| l.match(/INDEX$/) }.inspect
+          STDERR.puts "SLAVE: " + slave.ftp_listing.select { |l| l.match(/INDEX$/) }.inspect
+      end
+    end
+
+  rescue => ex
+    STDERR.puts ex.inspect
+    message = "UNKNOWN: an error occured while checking ftp freshness"
+    retval = 3 # unknown
   end
 
-rescue => ex
-  p ex
-  message = "UNKNOWN: an error occured while checking ftp freshness"
-  retval = 3 # unknown
+  { :message => message, :retval => retval }
 end
 
-puts message
-exit retval
+if slave_ip
+  result = check_freshness( slave_ip )
+  puts result[:message]
+  exit result[:retval]
+
+else
+  # DEBUG, not for nagios
+  OPTIONS[:verbose] = true
+  hosts.each { |slave_ip|
+    STDERR.puts "[ -- ] #{slave_ip}"
+    result = check_freshness( slave_ip )
+    STDERR.puts result[:message]
+  }
+  puts "UNKNOWN: not a nagios check"
+  exit 3 # unknown
+end
+
