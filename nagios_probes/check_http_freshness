@@ -1,0 +1,60 @@
+#!/usr/bin/ruby
+=begin
+
+check ftp.ccc.de freshness
+
+=end
+
+require 'open-uri'
+require 'nokogiri'
+require 'date'
+
+FQDN = 'ftp.ccc.de'
+FRESHNESS_FILE = 'NEW'
+
+# host -t A ftp.ccc.de
+MASTER_IP = '212.201.68.160'
+
+def parse_date( date_str = '')
+  # date_str =  28-Dec-2011 14:53
+  time = DateTime.strptime( date_str, "%d-%b-%Y %H:%M" )
+  time.strftime( "%d-%b-%Y %H:%M" )
+end
+
+def get_freshness(mirror)
+  open( 'http://' + mirror, 'Host' => FQDN ) { |f|
+    doc = Nokogiri::HTML(f) 
+    node = doc.xpath( "//table/tr/td/a[@href='#{FRESHNESS_FILE}']/../.." ).first
+    {
+      :mirror => mirror,
+      :name => node.children[1].text.strip,
+      :date => parse_date( node.children[2].text.strip ),
+      :size => node.children[3].text.strip.to_i,
+    } 
+  } 
+end
+
+def equal( a, b )
+  return true if( a[:name] == b[:name] and a[:date] == b[:date] and a[:size] == b[:size] )
+  return false
+end
+
+master = get_freshness( MASTER_IP )
+
+begin
+  d = get_freshness( ARGV[0] )
+  message = "OK: #{d[:mirror]} is synchronized"
+  retval = 0 # ok
+
+  unless equal(master, d)
+    #retval = 1 # warning
+    message = "CRITICAL: #{d[:mirror]} not in sync, last timestamp #{d[:date]}"
+    retval = 2 # critical
+  end
+rescue
+  message = "UNKNOWN: an error occured while checking ftp freshness"
+  retval = 3 # unknown
+end
+
+puts message
+exit retval
