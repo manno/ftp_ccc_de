@@ -14,12 +14,15 @@ OPTIONS = {
   :master_ip      => '212.201.68.160',
   :freshness_file => 'INDEX.gz',
   :verbose        => false,
+  :method           => 'http',
 }
 ARGV.options do |opt|
   opt.banner = "Usage: ruby #{$0} ip"
   opt.on('-f', '--fqdn', 'check this vhost') { |v| OPTIONS[:fqdn] = v }
   opt.on('-m', '--master', 'IP of the master http server') { |v| OPTIONS[:fqdn] = v }
   opt.on('-i', '--file', 'check freshness by comparing this file') { |v| OPTIONS[:freshness_file] = v }
+  opt.on("-F", "--use-ftp", "retrieve file by ftp") { |v| OPTIONS[:method] = 'ftp' }
+  opt.on("-H", "--use-http", "retrieve file by http") { |v| OPTIONS[:method] = 'http' }
   opt.on("-v", "--verbose", "enable verbose output") { |v| OPTIONS[:verbose] = v }
   opt.on("-h", "--help", "Show this help message.") { puts opt; exit }
   opt.parse!
@@ -48,15 +51,20 @@ class ServerInfo
   protected
   def retrieve_freshness_file
     begin
-    #open( "ftp://#{@ip}/#{OPTIONS[:freshness_file]}" ) { |f|
-    open( "http://#{@ip}/#{OPTIONS[:freshness_file]}", 'Host' => OPTIONS[:fqdn] ) { |f|
+      if OPTIONS[:method] == 'ftp'
+        f = open( "ftp://#{@ip}/#{OPTIONS[:freshness_file]}" )
+      else
+        f = open( "http://#{@ip}/#{OPTIONS[:freshness_file]}", 'Host' => OPTIONS[:fqdn] )
+      end
+      # FIXME when does Zlib accept encoding options?
       gzio = Zlib::GzipReader.new(f, :external_encoding => 'utf-8', 
                                   :internal_encoding => 'iso-8859-15', 
-                                  :invalid => :replace
-                                 )
+                                  :invalid => :replace)
       @ftp_listing = gzio.readlines
-    }
-    rescue
+      f.close
+    rescue => ex
+      STDERR.puts ex.inspect
+      STDERR.puts ex.backtrace.join("\n")
       @ftp_listing = []
       raise "failed to retrieve file"
     end
@@ -87,6 +95,7 @@ def check_freshness(slave_ip)
 
   rescue => ex
     STDERR.puts ex.inspect
+    STDERR.puts ex.backtrace.join("\n")
     message = "UNKNOWN: an error occured while checking ftp freshness"
     retval = 3 # unknown
   end
